@@ -71,7 +71,7 @@ func TestLoadConfig(t *testing.T) {
 	}
 
 	if !reflect.DeepEqual(c, expect) {
-		t.Errorf("unexpected output: %#v", c.Rules)
+		t.Errorf("unexpected output: %#v", c)
 	}
 }
 
