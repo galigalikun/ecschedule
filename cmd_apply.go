@@ -65,7 +65,7 @@ var cmdApply = &runnerImpl{
 			if err := ru.Apply(ctx, a.Session, *dryRun); err != nil {
 				return err
 			}
-			for _, v := range ru.ContainerOverrides {
+			for _, v := range ru.Targets[0].ContainerOverrides {
 				// mask environment variables
 				v.Environment = nil
 			}

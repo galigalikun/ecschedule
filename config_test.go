@@ -31,33 +31,35 @@ func TestLoadConfig(t *testing.T) {
 				Description:        "hoge description",
 				ScheduleExpression: "cron(0 0 * * ? *)",
 				Disabled:           false,
-				Target: &Target{
-					TargetID:        "",
-					TaskDefinition:  "task1",
-					TaskCount:       0,
-					Group:           "xxx",
-					PlatformVersion: "1.4.0",
-					LaunchType:      "FARGATE",
-					NetworkConfiguration: &NetworkConfiguration{
-						AwsVpcConfiguration: &AwsVpcConfiguration{
-							Subnets:        []string{"subnet-01234567", "subnet-12345678"},
-							SecurityGroups: []string{"sg-11111111", "sg-99999999"},
-							AssinPublicIP:  "ENABLED",
-						},
-					},
-					ContainerOverrides: []*ContainerOverride{
-						{
-							Name: "container1",
-							Command: []string{
-								"subcmd",
-								"argument",
-							},
-							Environment: map[string]string{
-								"HOGE_ENV": "HOGEGE",
+				Targets: []*Target{
+					{
+						TargetID:        "hoge-task1",
+						TaskDefinition:  "task1",
+						TaskCount:       0,
+						Group:           "xxx",
+						PlatformVersion: "1.4.0",
+						LaunchType:      "FARGATE",
+						NetworkConfiguration: &NetworkConfiguration{
+							AwsVpcConfiguration: &AwsVpcConfiguration{
+								Subnets:        []string{"subnet-01234567", "subnet-12345678"},
+								SecurityGroups: []string{"sg-11111111", "sg-99999999"},
+								AssinPublicIP:  "ENABLED",
 							},
 						},
+						ContainerOverrides: []*ContainerOverride{
+							{
+								Name: "container1",
+								Command: []string{
+									"subcmd",
+									"argument",
+								},
+								Environment: map[string]string{
+									"HOGE_ENV": "HOGEGE",
+								},
+							},
+						},
+						Role: "ecsEventsRole",
 					},
-					Role: "ecsEventsRole",
 				},
 				BaseConfig: &BaseConfig{
 					Region:    "us-east-1",
@@ -69,7 +71,7 @@ func TestLoadConfig(t *testing.T) {
 	}
 
 	if !reflect.DeepEqual(c, expect) {
-		t.Errorf("unexpected output: %#v", c)
+		t.Errorf("unexpected output: %#v", c.Rules)
 	}
 }
 

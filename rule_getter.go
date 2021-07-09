@@ -101,13 +101,8 @@ func (rg *ruleGetter) getRule(ctx context.Context, r *cloudwatchevents.Rule) (*R
 	switch len(targets) {
 	case 0:
 		return nil, nil
-	case 1:
-		ru.Target = targets[0]
 	default:
-		// not supported multiple target yet
-		return nil, nil
-		// ru.Target = targets[0]
-		// ru.Targets = targets[1:]
+		ru.Targets = targets
 	}
 	return ru, nil
 }

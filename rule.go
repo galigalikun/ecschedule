@@ -18,12 +18,11 @@ import (
 
 // Rule the rule
 type Rule struct {
-	Name               string `yaml:"name"`
-	Description        string `yaml:"description,omitempty"`
-	ScheduleExpression string `yaml:"scheduleExpression"`
-	Disabled           bool   `yaml:"disabled,omitempty"` // ENABLE | DISABLE
-	*Target            `yaml:",inline"`
-	// Targets []*Target `yaml:"targets,omitempty"`
+	Name               string    `yaml:"name"`
+	Description        string    `yaml:"description,omitempty"`
+	ScheduleExpression string    `yaml:"scheduleExpression"`
+	Disabled           bool      `yaml:"disabled,omitempty"` // ENABLE | DISABLE
+	Targets            []*Target `yaml:"targets,omitempty"`
 
 	*BaseConfig `yaml:",inline,omitempty"`
 }
@@ -91,7 +90,7 @@ func (nc *NetworkConfiguration) inputParameters() *ecs.NetworkConfiguration {
 }
 
 func (ta *Target) targetID(r *Rule) string {
-	if r.TargetID == "" {
+	if r.Targets[0].TargetID == "" {
 		return r.Name
 	}
 	return ta.TargetID
@@ -105,10 +104,10 @@ func (ta *Target) taskCount() int64 {
 }
 
 func (r *Rule) roleARN() string {
-	if strings.HasPrefix(r.Role, "arn:") {
-		return r.Role
+	if strings.HasPrefix(r.Targets[0].Role, "arn:") {
+		return r.Targets[0].Role
 	}
-	role := r.Role
+	role := r.Targets[0].Role
 	if role == "" {
 		role = defaultRole
 	}
@@ -127,10 +126,10 @@ func (ta *Target) targetARN(r *Rule) string {
 }
 
 func (ta *Target) taskDefinitionArn(r *Rule) string {
-	if strings.HasPrefix(r.TaskDefinition, "arn:") {
-		return r.TaskDefinition
+	if strings.HasPrefix(r.Targets[0].TaskDefinition, "arn:") {
+		return r.Targets[0].TaskDefinition
 	}
-	return fmt.Sprintf("arn:aws:ecs:%s:%s:task-definition/%s", r.Region, r.AccountID, r.TaskDefinition)
+	return fmt.Sprintf("arn:aws:ecs:%s:%s:task-definition/%s", r.Region, r.AccountID, r.Targets[0].TaskDefinition)
 }
 
 func (r *Rule) state() string {
@@ -142,10 +141,10 @@ func (r *Rule) state() string {
 
 func (r *Rule) ecsParameters() *cloudwatchevents.EcsParameters {
 	p := cloudwatchevents.EcsParameters{
-		TaskDefinitionArn: aws.String(r.taskDefinitionArn(r)),
-		TaskCount:         aws.Int64(r.taskCount()),
+		TaskDefinitionArn: aws.String(r.Targets[0].taskDefinitionArn(r)),
+		TaskCount:         aws.Int64(r.Targets[0].taskCount()),
 	}
-	ta := r.Target
+	ta := r.Targets[0]
 	if ta.Group != "" {
 		p.Group = aws.String(ta.Group)
 	}
@@ -162,9 +161,10 @@ func (r *Rule) ecsParameters() *cloudwatchevents.EcsParameters {
 }
 
 func (r *Rule) mergeBaseConfig(bc *BaseConfig, role string) {
-	if r.Role == "" {
-		// XXX care multiple target
-		r.Role = role
+	for i := range r.Targets {
+		if r.Targets[i].Role == "" {
+			r.Targets[i].Role = role
+		}
 	}
 	if r.BaseConfig == nil {
 		r.BaseConfig = bc
@@ -216,11 +216,11 @@ type kvPair struct {
 }
 
 func (r *Rule) target() *cloudwatchevents.Target {
-	if r.Target == nil {
+	if r.Targets == nil {
 		return nil
 	}
 	coj := &containerOverridesJSON{}
-	for _, co := range r.ContainerOverrides {
+	for _, co := range r.Targets[0].ContainerOverrides {
 		var kvPairs []*kvPair
 		for k, v := range co.Environment {
 			kvPairs = append(kvPairs, &kvPair{
@@ -236,8 +236,8 @@ func (r *Rule) target() *cloudwatchevents.Target {
 	}
 	bs, _ := json.Marshal(coj)
 	return &cloudwatchevents.Target{
-		Id:            aws.String(r.targetID(r)),
-		Arn:           aws.String(r.targetARN(r)),
+		Id:            aws.String(r.Targets[0].targetID(r)),
+		Arn:           aws.String(r.Targets[0].targetARN(r)),
 		RoleArn:       aws.String(r.roleARN()),
 		EcsParameters: r.ecsParameters(),
 		Input:         aws.String(string(bs)),
@@ -305,7 +305,7 @@ func (r *Rule) Run(ctx context.Context, sess *session.Session, noWait bool) erro
 	}
 	svc := ecs.New(sess, &aws.Config{Region: aws.String(r.Region)})
 	var contaierOverrides []*ecs.ContainerOverride
-	for _, co := range r.ContainerOverrides {
+	for _, co := range r.Targets[0].ContainerOverrides {
 		var (
 			kvPairs []*ecs.KeyValuePair
 			command []*string
@@ -327,19 +327,19 @@ func (r *Rule) Run(ctx context.Context, sess *session.Session, noWait bool) erro
 	}
 
 	var networkConfiguration *ecs.NetworkConfiguration
-	if r.NetworkConfiguration != nil {
-		networkConfiguration = r.NetworkConfiguration.inputParameters()
+	if r.Targets[0].NetworkConfiguration != nil {
+		networkConfiguration = r.Targets[0].NetworkConfiguration.inputParameters()
 	}
 
 	out, err := svc.RunTaskWithContext(ctx,
 		&ecs.RunTaskInput{
 			Cluster:        aws.String(r.Cluster),
-			TaskDefinition: aws.String(r.taskDefinitionArn(r)),
+			TaskDefinition: aws.String(r.Targets[0].taskDefinitionArn(r)),
 			Overrides: &ecs.TaskOverride{
 				ContainerOverrides: contaierOverrides,
 			},
-			Count: aws.Int64(r.taskCount()),
-			LaunchType: aws.String(r.Target.LaunchType),
+			Count:                aws.Int64(r.Targets[0].taskCount()),
+			LaunchType:           aws.String(r.Targets[0].LaunchType),
 			NetworkConfiguration: networkConfiguration,
 		})
 	if err != nil {
@@ -366,7 +366,7 @@ func (r *Rule) diff(ctx context.Context, cw *cloudwatchevents.CloudWatchEvents) 
 	}
 	localRuleYaml := string(bs)
 
-	role := r.Role
+	role := r.Targets[0].Role
 	if role == "" {
 		role = defaultRole
 	}
